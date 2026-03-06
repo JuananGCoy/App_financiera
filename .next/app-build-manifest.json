@@ -11,20 +11,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/wealth/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/wealth/page.js"
-    ],
     "/expenses/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/expenses/page.js"
     ],
-    "/pro/page": [
+    "/wealth/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/pro/page.js"
+      "static/chunks/app/wealth/page.js"
     ],
     "/_not-found/page": [
       "static/chunks/webpack.js",
