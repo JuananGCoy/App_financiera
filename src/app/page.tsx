@@ -3,20 +3,26 @@
 import { useStore } from "@/store/useStore";
 import { Card } from "@/components/ui/Card";
 import { useState } from "react";
-import { Wallet, PiggyBank, Receipt, Users, User } from "lucide-react";
 import { NetWorthChart } from "@/components/NetWorthChart";
 import { SharedDebtsWidget } from "@/components/SharedDebtsWidget";
+import { Onboarding } from "@/components/Onboarding";
+import { LogOut, Wallet, PiggyBank, Receipt, Users, User } from "lucide-react";
 
 export default function Home() {
-    const { users, currentUser, switchUser, transactions } = useStore();
+    const { household, user: authUser, members, wealth, signOut, transactions } = useStore();
     const [view, setView] = useState<"private" | "shared">("private");
 
-    const user = users[currentUser];
-    const partnerId = currentUser === "A" ? "B" : "A";
-    const partner = users[partnerId];
+    if (!authUser) return null; // Esperando auth
+
+    if (!household) {
+        return <Onboarding />;
+    }
+
+    const partnerId = members.find(m => m.id !== authUser.id)?.id;
+    const partnerName = members.find(m => m.id !== authUser.id)?.display_name || "Compañero";
 
     // Cálculos rápidos para la vista
-    const personalTxs = transactions.filter(t => t.type === "personal" && t.paidBy === currentUser);
+    const personalTxs = transactions.filter(t => t.type === "personal" && t.paidBy === authUser.id);
     const sharedTxs = transactions.filter(t => t.type === "shared");
 
     const personalExpenses = personalTxs.reduce((acc, curr) => acc + curr.amount, 0);
@@ -27,17 +33,19 @@ export default function Home() {
             {/* Header & User Switch (Mock) */}
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-2xl font-semibold text-slate-800">Hola, {user.name}</h1>
-                    <p className="text-sm text-slate-500">Tu resumen financiero</p>
+                    <h1 className="text-2xl font-bold text-slate-800">Hola, {authUser.display_name}</h1>
+                    <p className="text-sm text-slate-500 font-medium">{household.name}</p>
                 </div>
-                <button
-                    onClick={() => switchUser(partnerId)}
-                    className="bg-slate-200 p-2 rounded-full text-sm font-medium flex items-center gap-2 hover:bg-slate-300 transition-colors"
-                    title="Cambiar usuario (Mock)"
-                >
-                    <User size={16} />
-                    {partner.name}
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => signOut()}
+                        className="p-2.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all shadow-sm"
+                        title="Cerrar sesión"
+                    >
+                        <LogOut size={18} />
+                    </button>
+                    {/* El botón de Switch User ya no aplica en este flujo real de autolocalización, pero mantenemos una tarjeta de visualización opcional o simplemente lo quitamos */}
+                </div>
             </div>
 
             {/* Toggle View */}
@@ -66,7 +74,7 @@ export default function Home() {
                             <Wallet className="opacity-80" />
                             <h2 className="font-medium opacity-90">Sueldo Neto</h2>
                         </div>
-                        <p className="text-3xl font-bold">{user.salary} €</p>
+                        <p className="text-3xl font-bold">{wealth?.salary || 0} €</p>
                     </Card>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -75,7 +83,7 @@ export default function Home() {
                                 <PiggyBank size={18} />
                                 <span className="text-xs font-medium uppercase tracking-wider">Ahorros</span>
                             </div>
-                            <p className="text-xl font-bold text-slate-800">{user.liquidity} €</p>
+                            <p className="text-xl font-bold text-slate-800">{wealth?.liquidity || 0} €</p>
                         </Card>
                         <Card className="p-4">
                             <div className="flex items-center gap-2 text-slate-500 mb-2">
@@ -113,8 +121,8 @@ export default function Home() {
                             <Users className="opacity-80" />
                             <h2 className="font-medium opacity-90">Progreso Familiar (Ingresos)</h2>
                         </div>
-                        <p className="text-3xl font-bold">{user.salary + partner.salary} €</p>
-                        <p className="text-sm opacity-80 mt-1">Suma de ambos sueldos</p>
+                        <p className="text-3xl font-bold">Sumario Global</p>
+                        <p className="text-sm opacity-80 mt-1">Acércate a Wealth para configurar esto</p>
                     </Card>
 
                     <Card className="p-4">
@@ -131,8 +139,8 @@ export default function Home() {
                             {sharedTxs.slice(0, 5).map(t => (
                                 <div key={t.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-border">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
-                                            {t.paidBy}
+                                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 uppercase">
+                                            {members.find(m => m.id === t.paidBy)?.display_name?.substring(0, 2) || "U"}
                                         </div>
                                         <div>
                                             <p className="font-medium text-slate-800">{t.description}</p>

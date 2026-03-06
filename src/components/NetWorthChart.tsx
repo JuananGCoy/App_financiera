@@ -5,7 +5,10 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianG
 
 export function NetWorthChart() {
     const netWorthHistory = useStore((state) => state.netWorthHistory);
-    const users = useStore((state) => state.users);
+    const members = useStore((state) => state.members);
+
+    const nameA = members[0]?.display_name?.split(" ")[0] || "Usuario 1";
+    const nameB = members[1]?.display_name?.split(" ")[0] || "Usuario 2";
 
     // Formateador para mostrar Euros
     const formatCurrency = (value: number) => {
@@ -91,7 +94,7 @@ export function NetWorthChart() {
                         <Area
                             type="monotone"
                             dataKey="amountA"
-                            name={users.A.name}
+                            name={nameA}
                             stackId="1"
                             stroke="#818CF8" // Indigo-400
                             strokeWidth={2}
@@ -101,7 +104,7 @@ export function NetWorthChart() {
                         <Area
                             type="monotone"
                             dataKey="amountB"
-                            name={users.B.name}
+                            name={nameB}
                             stackId="1"
                             stroke="#F472B6" // Pink-400
                             strokeWidth={2}

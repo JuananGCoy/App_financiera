@@ -6,14 +6,14 @@ export type SplitType = "50-50" | "custom";
 
 export interface Transaction {
     id: string;
+    type: TransactionType;
     amount: number;
     category: string;
-    type: TransactionType;
     date: string;
     description: string;
-    paidBy: "A" | "B";
+    paidBy: string; // auth.uid of the payer
     splitType?: SplitType;
-    splitAmountA?: number;
+    splitAmountA?: number; // These should probably become a map or array later, but keep simple for now
     splitAmountB?: number;
 }
 
@@ -31,7 +31,7 @@ export interface Subscription {
     name: string;
     cost: number;
     period: "mensual" | "anual";
-    paidBy: "A" | "B";
+    paidBy: string; // auth.uid
 }
 
 export interface Goal {
@@ -43,8 +43,7 @@ export interface Goal {
 }
 
 export interface UserState {
-    id: "A" | "B";
-    name: string;
+    id: string; // Real auth.uid
     salary: number;
     liquidity: number;
     investments: Investment[];
@@ -52,23 +51,43 @@ export interface UserState {
 
 export interface NetWorthDataPoint {
     date: string;
-    amountA: number;
-    amountB: number;
-    total: number;
+    amount: number; // Combined or personal depending on view, simplify to total for now
+}
+
+export interface AppUser {
+    id: string;
+    email: string;
+    display_name: string;
+    avatar_url?: string;
+}
+
+export interface Household {
+    id: string;
+    name: string;
+    invite_code: string;
 }
 
 export interface AppState {
-    currentUser: "A" | "B";
-    users: {
-        A: UserState;
-        B: UserState;
+    // Auth & Context
+    session: any | null;
+    user: AppUser | null;
+    household: Household | null;
+    members: AppUser[];
+
+    // Personal Financial Data
+    wealth: {
+        salary: number;
+        liquidity: number;
     };
+    investments: Investment[];
+
+    // Household Financial Data
     transactions: Transaction[];
     netWorthHistory: NetWorthDataPoint[];
     subscriptions: Subscription[];
     goals: Goal[];
-    switchUser: (userId: "A" | "B") => void;
     addTransaction: (t: Transaction) => void;
+    deleteTransaction: (id: string) => void;
 
     // UI State
     isAddTxModalOpen: boolean;
@@ -77,105 +96,112 @@ export interface AppState {
 
     // Wealth Management
     updateLiquidity: (amount: number) => void;
-    addInvestment: (investment: Omit<Investment, "id">) => void;
+    updateSalary: (amount: number) => void;
+    addInvestment: (investment: Investment) => void;
+    deleteInvestment: (id: string) => void;
+    updateInvestment: (investment: Investment) => void;
 
     // Pro Features (Goals & Subs)
-    addSubscription: (sub: Omit<Subscription, "id">) => void;
+    addSubscription: (sub: Subscription) => void;
     deleteSubscription: (id: string) => void;
-    addGoal: (goal: Omit<Goal, "id" | "currentAmount">) => void;
+    addGoal: (goal: Goal) => void;
     updateGoalProgress: (id: string, amountToAdd: number) => void;
     deleteGoal: (id: string) => void;
 
     settleDebt: () => void;
-    getDebtBalance: () => { amount: number; whoOwes: "A" | "B" | null };
+    getDebtBalance: () => { amount: number; whoOwes: string | null };
     getExpiringAssets: () => Investment[];
+
+    // Supabase Sync Actions
+    setSession: (session: any) => void;
+    setHousehold: (household: Household | null) => void;
+    setMembers: (members: AppUser[]) => void;
+    setWealth: (wealth: { salary: number, liquidity: number }) => void;
+    setInvestments: (investments: Investment[]) => void;
+    setTransactions: (txs: Transaction[]) => void;
+    setSubscriptions: (subs: Subscription[]) => void;
+    setGoals: (goals: Goal[]) => void;
+    signOut: () => Promise<void>;
 }
 
 const currentDate = new Date();
-const in15Days = new Date();
-in15Days.setDate(currentDate.getDate() + 15);
-const in60Days = new Date();
-in60Days.setDate(currentDate.getDate() + 60);
-
-const initialTransactions: Transaction[] = [
-    { id: "1", amount: 150, category: "Supermercado", type: "shared", date: "2024-05-01", description: "Mercadona", paidBy: "A", splitType: "50-50" },
-    { id: "2", amount: 60, category: "Ocio", type: "shared", date: "2024-05-02", description: "Cena", paidBy: "B", splitType: "50-50" },
-    { id: "3", amount: 45, category: "Personal", type: "personal", date: "2024-05-03", description: "Ropa", paidBy: "A" },
-    { id: "4", amount: 120, category: "Hogar", type: "shared", date: "2024-05-05", description: "IKEA", paidBy: "A", splitType: "custom", splitAmountA: 20, splitAmountB: 100 },
-];
 
 export const useStore = create<AppState>()(
     persist(
         (set, get) => ({
-            currentUser: "A",
-            users: {
-                A: {
-                    id: "A",
-                    name: "Juan",
-                    salary: 2500,
-                    liquidity: 5000,
-                    investments: [
-                        { id: "i1", name: "S&P 500", amount: 10000, category: "RV" },
-                        { id: "i2", name: "Depósito Facto", amount: 5000, category: "Deposito", apy: 3.5, maturityDate: in15Days.toISOString().split("T")[0] }
-                    ]
-                },
-                B: {
-                    id: "B",
-                    name: "María",
-                    salary: 2800,
-                    liquidity: 7000,
-                    investments: [
-                        { id: "i3", name: "MSCI World", amount: 15000, category: "RV" },
-                        { id: "i4", name: "Fondo Monetario", amount: 3000, category: "Monetario" }
-                    ]
-                }
+            session: null,
+            user: null,
+            household: null,
+            members: [],
+
+            wealth: {
+                salary: 0,
+                liquidity: 0,
             },
-            transactions: initialTransactions,
-            subscriptions: [
-                { id: "s1", name: "Netflix", cost: 15.99, period: "mensual", paidBy: "A" },
-                { id: "s2", name: "Spotify Duo", cost: 14.99, period: "mensual", paidBy: "B" },
-                { id: "s3", name: "Amazon Prime", cost: 49.90, period: "anual", paidBy: "A" },
-                { id: "s4", name: "MyInvestor Premium", cost: 2.99, period: "mensual", paidBy: "B" }
-            ],
-            goals: [
-                { id: "g1", name: "Entrada Casa - Adosado", targetAmount: 40000, currentAmount: 18500 }
-            ],
-            netWorthHistory: [
-                { date: "Ene", amountA: 18000, amountB: 22000, total: 40000 },
-                { date: "Feb", amountA: 18500, amountB: 23000, total: 41500 },
-                { date: "Mar", amountA: 19200, amountB: 24000, total: 43200 },
-                { date: "Abr", amountA: 20000, amountB: 25000, total: 45000 },
-            ],
+            investments: [],
+            transactions: [],
+            subscriptions: [],
+            goals: [],
+            netWorthHistory: [],
             isAddTxModalOpen: false,
+
+            setSession: (session) => {
+                if (!session) {
+                    set({ session: null, user: null, household: null, members: [] });
+                    return;
+                }
+                const user = session.user;
+                set({
+                    session,
+                    user: {
+                        id: user.id,
+                        email: user.email,
+                        display_name: user.user_metadata?.display_name || user.email?.split('@')[0],
+                        avatar_url: user.user_metadata?.avatar_url
+                    }
+                });
+            },
+
+            setHousehold: (household) => set({ household }),
+            setMembers: (members) => set({ members }),
+            setWealth: (wealth) => set({ wealth }),
+            setInvestments: (investments) => set({ investments }),
+            setTransactions: (transactions) => set({ transactions }),
+            setSubscriptions: (subscriptions) => set({ subscriptions }),
+            setGoals: (goals) => set({ goals }),
+
+            signOut: async () => {
+                const { createClient } = await import("@/lib/supabase");
+                const supabase = createClient();
+                await supabase.auth.signOut();
+                set({ session: null, user: null, household: null, members: [] });
+            },
+
             openAddTxModal: () => set({ isAddTxModalOpen: true }),
             closeAddTxModal: () => set({ isAddTxModalOpen: false }),
 
             updateLiquidity: (amount) => set((state) => ({
-                users: {
-                    ...state.users,
-                    [state.currentUser]: {
-                        ...state.users[state.currentUser],
-                        liquidity: amount
-                    }
-                }
+                wealth: { ...state.wealth, liquidity: amount }
+            })),
+            updateSalary: (amount) => set((state) => ({
+                wealth: { ...state.wealth, salary: amount }
             })),
 
             addInvestment: (investment) => set((state) => {
-                const newInv: Investment = { ...investment as Investment, id: `inv_${Date.now()}` };
                 return {
-                    users: {
-                        ...state.users,
-                        [state.currentUser]: {
-                            ...state.users[state.currentUser],
-                            investments: [...state.users[state.currentUser].investments, newInv]
-                        }
-                    }
+                    investments: [...state.investments, investment]
                 };
             }),
+            deleteInvestment: (id) => set((state) => ({
+                investments: state.investments.filter(inv => inv.id !== id)
+            })),
+            updateInvestment: (investment) => set((state) => ({
+                investments: state.investments.map(inv => inv.id === investment.id ? investment : inv)
+            })),
 
             // --- Pro Features Actions ---
             addSubscription: (sub) => set((state) => ({
-                subscriptions: [...state.subscriptions, { ...sub, id: `sub_${Date.now()}` }]
+                subscriptions: [...state.subscriptions, sub]
             })),
 
             deleteSubscription: (id) => set((state) => ({
@@ -183,7 +209,7 @@ export const useStore = create<AppState>()(
             })),
 
             addGoal: (goal) => set((state) => ({
-                goals: [...state.goals, { ...goal, id: `goal_${Date.now()}`, currentAmount: 0 }]
+                goals: [...state.goals, goal]
             })),
 
             updateGoalProgress: (id, amountToAdd) => set((state) => ({
@@ -198,51 +224,56 @@ export const useStore = create<AppState>()(
                 goals: state.goals.filter(g => g.id !== id)
             })),
 
-            switchUser: (userId) => set({ currentUser: userId }),
             addTransaction: (t) => set((state) => ({ transactions: [t, ...state.transactions] })),
-            settleDebt: () => set((state) => ({
-                transactions: [...state.transactions, {
-                    id: Date.now().toString(),
-                    amount: get().getDebtBalance().amount,
-                    category: "Liquidación",
-                    type: "shared",
-                    date: new Date().toISOString().split('T')[0],
-                    description: "Liquidación de deudas",
-                    paidBy: get().getDebtBalance().whoOwes === "A" ? "A" : "B",
-                    splitType: "custom",
-                    splitAmountA: get().getDebtBalance().whoOwes === "A" ? get().getDebtBalance().amount : 0,
-                    splitAmountB: get().getDebtBalance().whoOwes === "B" ? get().getDebtBalance().amount : 0,
-                }]
-            })),
+            deleteTransaction: (id) => set((state) => ({ transactions: state.transactions.filter(t => t.id !== id) })),
+            settleDebt: () => {
+                const balance = get().getDebtBalance();
+                if (!balance.whoOwes || balance.amount === 0) return;
+                set((state) => ({
+                    transactions: [...state.transactions, {
+                        id: Date.now().toString(),
+                        amount: balance.amount,
+                        category: "Liquidación",
+                        type: "shared",
+                        date: new Date().toISOString().split('T')[0],
+                        description: "Liquidación de deudas",
+                        paidBy: balance.whoOwes === get().user?.id ? get().user!.id : (balance.whoOwes as string), // The one who owes pays
+                        splitType: "custom",
+                        splitAmountA: 0,
+                        splitAmountB: 0,
+                    }]
+                }));
+            },
             getDebtBalance: () => {
-                let balance = 0; // Positive means B owes A, Negative means A owes B
+                const me = get().user?.id;
+                if (!me) return { amount: 0, whoOwes: null };
+
+                let balance = 0; // Positive means partner owes ME, Negative means I owe partner
 
                 get().transactions.forEach(t => {
                     if (t.type === "shared" && t.category !== "Liquidación") {
                         if (t.splitType === "50-50") {
-                            if (t.paidBy === "A") balance += t.amount / 2;
-                            if (t.paidBy === "B") balance -= t.amount / 2;
+                            if (t.paidBy === me) balance += t.amount / 2;
+                            if (t.paidBy !== me) balance -= t.amount / 2;
                         } else if (t.splitType === "custom") {
-                            // Si A pagó, B le debe su parte
-                            if (t.paidBy === "A") balance += (t.splitAmountB || 0);
-                            // Si B pagó, A le debe su parte
-                            if (t.paidBy === "B") balance -= (t.splitAmountA || 0);
+                            // This logic will need to be updated to be truly dynamic with N members
+                            // For now, assume custom splits are simplified or handle A/B gracefully
+                            // Needs true transaction_splits implementation later.
                         }
                     } else if (t.category === "Liquidación") {
-                        balance = 0; // Settle implies returning to 0 for simplicity here, though a real engine is more complex
+                        balance = 0;
                     }
                 });
 
-                if (balance > 0) return { amount: balance, whoOwes: "B" };
-                if (balance < 0) return { amount: Math.abs(balance), whoOwes: "A" };
+                if (balance > 0) return { amount: balance, whoOwes: "partner" };
+                if (balance < 0) return { amount: Math.abs(balance), whoOwes: me };
                 return { amount: 0, whoOwes: null };
             },
             getExpiringAssets: () => {
                 const msEnUnDia = 24 * 60 * 60 * 1000;
                 const ahora = new Date().getTime();
-                const user = get().users[get().currentUser];
 
-                return user.investments.filter(inv => {
+                return get().investments.filter((inv: Investment) => {
                     if (inv.category !== 'Deposito' || !inv.maturityDate) return false;
                     const diasRestantes = (new Date(inv.maturityDate).getTime() - ahora) / msEnUnDia;
                     return diasRestantes >= 0 && diasRestantes <= 30; // 30 días o menos

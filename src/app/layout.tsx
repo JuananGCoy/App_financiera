@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import { BottomNav } from "@/components/BottomNav";
 import { ClientWrapper } from "@/components/ClientWrapper";
-import { AddTransactionModal } from "@/components/AddTransactionModal";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -32,15 +30,11 @@ export default function RootLayout({
     children: React.ReactNode;
 }) {
     return (
-        <html lang="es" className="antialiased">
-            <body className="bg-background text-foreground min-h-screen pb-20 md:pb-0">
+        <html lang="es" className="antialiased" suppressHydrationWarning>
+            <body className="bg-background text-foreground min-h-screen pb-20 md:pb-0" suppressHydrationWarning>
                 <main className="max-w-md mx-auto min-h-screen bg-slate-50 md:border-x md:border-border md:shadow-sm relative">
                     <ClientWrapper>
-                        <div className="min-h-[calc(100vh-64px)] pb-6 relative">
-                            {children}
-                            <AddTransactionModal />
-                        </div>
-                        <BottomNav />
+                        {children}
                     </ClientWrapper>
                 </main>
             </body>

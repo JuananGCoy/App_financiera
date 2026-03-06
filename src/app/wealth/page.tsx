@@ -2,29 +2,181 @@
 
 import { useStore } from "@/store/useStore";
 import { Card } from "@/components/ui/Card";
-import { TrendingUp, Wallet, ArrowUpRight, Clock, AlertTriangle, Plus, Edit2 } from "lucide-react";
+import { TrendingUp, Wallet, ArrowUpRight, Clock, AlertTriangle, Plus, Edit2, Trash2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useState } from "react";
 import { Investment } from "@/store/useStore";
+import { createClient } from "@/lib/supabase";
 
 export default function WealthPage() {
-    const { users, currentUser, netWorthHistory, getExpiringAssets, updateLiquidity, addInvestment } = useStore();
-    const user = users[currentUser];
+    const { user, wealth, investments, netWorthHistory, getExpiringAssets, updateLiquidity, updateSalary, addInvestment, deleteInvestment, updateInvestment } = useStore();
     const expiringAssets = getExpiringAssets();
+    const supabase = createClient();
 
     // UI State for Editing
     const [isEditingLiquidity, setIsEditingLiquidity] = useState(false);
-    const [newLiquidity, setNewLiquidity] = useState(user.liquidity.toString());
+    const [newLiquidity, setNewLiquidity] = useState(wealth?.liquidity?.toString() || "0");
+    const [isUpdatingLiq, setIsUpdatingLiq] = useState(false);
+    const [isEditingSalary, setIsEditingSalary] = useState(false);
+    const [newSalary, setNewSalary] = useState(wealth?.salary?.toString() || "0");
+    const [isUpdatingSalary, setIsUpdatingSalary] = useState(false);
 
     const [isAddingInv, setIsAddingInv] = useState(false);
+    const [isSubmittingInv, setIsSubmittingInv] = useState(false);
     const [invName, setInvName] = useState("");
     const [invAmount, setInvAmount] = useState("");
     const [invCategory, setInvCategory] = useState<Investment["category"]>("RV");
     const [invApy, setInvApy] = useState("");
     const [invMaturity, setInvMaturity] = useState("");
+    const [isDeletingInv, setIsDeletingInv] = useState<string | null>(null);
 
-    const totalInvestments = user.investments.reduce((acc, curr) => acc + curr.amount, 0);
-    const netWorth = user.liquidity + totalInvestments;
+    // Editing state
+    const [editingInvId, setEditingInvId] = useState<string | null>(null);
+    const [editInvName, setEditInvName] = useState("");
+    const [editInvAmount, setEditInvAmount] = useState("");
+    const [editInvCategory, setEditInvCategory] = useState<Investment["category"]>("RV");
+    const [editInvApy, setEditInvApy] = useState("");
+    const [editInvMaturity, setEditInvMaturity] = useState("");
+    const [isUpdatingInv, setIsUpdatingInv] = useState(false);
+
+    const totalInvestments = investments.reduce((acc, curr) => acc + curr.amount, 0);
+    const netWorth = (wealth?.liquidity || 0) + totalInvestments;
+
+    const handleUpdateLiquidity = async () => {
+        if (!user || !wealth) return;
+        setIsUpdatingLiq(true);
+        const amount = Number(newLiquidity) || 0;
+
+        const { error } = await supabase
+            .from("wealth")
+            .update({ liquidity: amount })
+            .eq("user_id", user.id);
+
+        setIsUpdatingLiq(false);
+
+        if (!error) {
+            updateLiquidity(amount);
+            setIsEditingLiquidity(false);
+        } else {
+            console.error("Failed to update liquidity:", error);
+        }
+    };
+
+    const handleUpdateSalary = async () => {
+        if (!user || !wealth) return;
+        setIsUpdatingSalary(true);
+        const salaryAmount = Number(newSalary) || 0;
+        const newTotalLiquidity = (wealth.liquidity || 0) + salaryAmount;
+
+        // Update both salary and liquidity in Supabase
+        const { error } = await supabase
+            .from("wealth")
+            .update({
+                salary: salaryAmount,
+                liquidity: newTotalLiquidity
+            })
+            .eq("user_id", user.id);
+
+        setIsUpdatingSalary(false);
+
+        if (!error) {
+            updateSalary(salaryAmount);
+            updateLiquidity(newTotalLiquidity);
+            setNewLiquidity(newTotalLiquidity.toString());
+            setIsEditingSalary(false);
+        } else {
+            console.error("Failed to update salary and add to liquidity:", error);
+        }
+    };
+
+    const handleAddInvestment = async () => {
+        if (!user || !invName || !invAmount) return;
+        setIsSubmittingInv(true);
+
+        const newInv = {
+            user_id: user.id,
+            name: invName,
+            amount: Number(invAmount),
+            category: invCategory,
+            apy: invApy ? Number(invApy) : null,
+            maturity_date: invMaturity || null
+        };
+
+        const { data, error } = await supabase
+            .from("investments")
+            .insert(newInv)
+            .select()
+            .single();
+
+        setIsSubmittingInv(false);
+
+        if (!error && data) {
+            addInvestment({
+                id: data.id,
+                name: data.name,
+                amount: Number(data.amount),
+                category: data.category,
+                apy: data.apy ?? undefined,
+                maturityDate: data.maturity_date ?? undefined
+            });
+            setIsAddingInv(false);
+            setInvName(""); setInvAmount(""); setInvApy(""); setInvMaturity("");
+        } else {
+            console.error("Failed to add investment:", error);
+        }
+    };
+
+    const handleDeleteInvestment = async (id: string) => {
+        setIsDeletingInv(id);
+        const { error } = await supabase
+            .from("investments")
+            .delete()
+            .eq("id", id);
+        setIsDeletingInv(null);
+        if (!error) {
+            deleteInvestment(id);
+        }
+    };
+
+    const startEditing = (inv: Investment) => {
+        setEditingInvId(inv.id);
+        setEditInvName(inv.name);
+        setEditInvAmount(inv.amount.toString());
+        setEditInvCategory(inv.category);
+        setEditInvApy(inv.apy?.toString() || "");
+        setEditInvMaturity(inv.maturityDate || "");
+    };
+
+    const handleUpdateInvestment = async () => {
+        if (!editingInvId || !editInvName || !editInvAmount) return;
+        setIsUpdatingInv(true);
+
+        const updatedInv = {
+            name: editInvName,
+            amount: Number(editInvAmount),
+            category: editInvCategory,
+            apy: editInvApy ? Number(editInvApy) : null,
+            maturity_date: editInvMaturity || null
+        };
+
+        const { error } = await supabase
+            .from("investments")
+            .update(updatedInv)
+            .eq("id", editingInvId);
+
+        setIsUpdatingInv(false);
+        if (!error) {
+            updateInvestment({
+                id: editingInvId,
+                name: editInvName,
+                amount: Number(editInvAmount),
+                category: editInvCategory,
+                apy: editInvApy ? Number(editInvApy) : undefined,
+                maturityDate: editInvMaturity || undefined
+            });
+            setEditingInvId(null);
+        }
+    };
 
     return (
         <div className="p-6 space-y-6">
@@ -59,22 +211,65 @@ export default function WealthPage() {
                                     autoFocus
                                 />
                                 <button
-                                    onClick={() => {
-                                        updateLiquidity(Number(newLiquidity) || 0);
-                                        setIsEditingLiquidity(false);
-                                    }}
-                                    className="text-emerald-400 font-bold text-xs bg-emerald-400/10 px-2 py-1.5 rounded"
+                                    onClick={handleUpdateLiquidity}
+                                    disabled={isUpdatingLiq}
+                                    className="text-emerald-400 font-bold text-xs bg-emerald-400/10 px-2 py-1.5 rounded disabled:opacity-50"
                                 >
-                                    OK
+                                    {isUpdatingLiq ? "..." : "OK"}
                                 </button>
                             </div>
                         ) : (
-                            <span className="font-medium text-lg block">{user.liquidity.toLocaleString('es-ES')} €</span>
+                            <span className="font-medium text-lg block">{(wealth?.liquidity || 0).toLocaleString('es-ES')} €</span>
                         )}
                     </div>
                     <div className="flex-1 bg-white/10 p-3 rounded-xl backdrop-blur-sm">
                         <span className="opacity-70 block text-xs mb-1">Inversiones</span>
                         <span className="font-medium text-lg block">{totalInvestments.toLocaleString('es-ES')} €</span>
+                    </div>
+                </div>
+
+                {/* Salary Section */}
+                <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
+                    <div>
+                        <span className="opacity-70 text-xs block mb-0.5">Sueldo Neto Mensual</span>
+                        {isEditingSalary ? (
+                            <div className="flex gap-2 items-center mt-1">
+                                <input
+                                    type="number"
+                                    value={newSalary}
+                                    onChange={e => setNewSalary(e.target.value)}
+                                    className="w-24 bg-slate-800 text-white text-xs px-2 py-1 rounded border border-slate-700 focus:outline-none"
+                                    autoFocus
+                                />
+                                <button
+                                    onClick={handleUpdateSalary}
+                                    disabled={isUpdatingSalary}
+                                    className="text-emerald-400 font-bold text-xs bg-emerald-400/20 px-3 py-1.5 rounded-lg border border-emerald-400/30 hover:bg-emerald-400/30 transition-colors disabled:opacity-50"
+                                >
+                                    {isUpdatingSalary ? "..." : "Ingresar Nómina"}
+                                </button>
+                                <button
+                                    onClick={() => setIsEditingSalary(false)}
+                                    className="text-slate-400 text-xs hover:text-white"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2 group">
+                                <span className="font-semibold text-lg">{(wealth?.salary || 0).toLocaleString('es-ES')} €</span>
+                                <button
+                                    onClick={() => setIsEditingSalary(true)}
+                                    className="p-1 hover:bg-white/20 rounded-md transition-colors opacity-40 group-hover:opacity-100"
+                                >
+                                    <Edit2 size={12} />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    <div className="text-right">
+                        <span className="opacity-70 text-xs block mb-0.5">Capacidad de Ahorro</span>
+                        <span className="text-emerald-400 font-bold">~ {((wealth?.salary || 0) * 0.2).toLocaleString('es-ES')} €</span>
                     </div>
                 </div>
             </Card>
@@ -186,51 +381,115 @@ export default function WealthPage() {
                                     className="flex-1 py-2 text-sm font-medium text-slate-500 bg-slate-100 rounded-lg"
                                 >Cancelar</button>
                                 <button
-                                    onClick={() => {
-                                        if (!invName || !invAmount) return;
-                                        addInvestment({
-                                            name: invName,
-                                            amount: Number(invAmount),
-                                            category: invCategory,
-                                            apy: invApy ? Number(invApy) : undefined,
-                                            maturityDate: invMaturity || undefined
-                                        });
-                                        setIsAddingInv(false);
-                                        setInvName(""); setInvAmount(""); setInvApy(""); setInvMaturity("");
-                                    }}
-                                    className="flex-1 py-2 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors"
-                                >Guardar</button>
+                                    onClick={handleAddInvestment}
+                                    disabled={!invName || !invAmount || isSubmittingInv}
+                                    className="flex-1 py-2 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >{isSubmittingInv ? "Guardando..." : "Guardar"}</button>
                             </div>
                         </div>
                     </Card>
                 )}
 
                 <div className="space-y-3">
-                    {user.investments.map(inv => (
+                    {investments.map(inv => (
                         <Card key={inv.id} className="p-4 hover:shadow-md transition-shadow">
-                            <div className="flex justify-between items-start mb-2">
-                                <div>
-                                    <h4 className="font-medium text-slate-800 flex items-center gap-2">
-                                        {inv.name}
-                                        {inv.category === "RV" && <ArrowUpRight size={14} className="text-accent" />}
-                                    </h4>
-                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">{inv.category}</p>
-                                </div>
-                                <p className="font-semibold text-slate-800">{inv.amount.toLocaleString('es-ES')} €</p>
-                            </div>
+                            {editingInvId === inv.id ? (
+                                <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
+                                    <input
+                                        type="text" placeholder="Nombre"
+                                        value={editInvName} onChange={e => setEditInvName(e.target.value)}
+                                        className="w-full text-sm p-2 rounded-lg border border-emerald-200 outline-none focus:ring-2 ring-emerald-400"
+                                        autoFocus
+                                    />
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="number" placeholder="Importe"
+                                            value={editInvAmount} onChange={e => setEditInvAmount(e.target.value)}
+                                            className="w-1/2 text-sm p-2 rounded-lg border border-emerald-200 outline-none focus:ring-2 ring-emerald-400"
+                                        />
+                                        <select
+                                            value={editInvCategory}
+                                            onChange={e => setEditInvCategory(e.target.value as any)}
+                                            className="w-1/2 text-sm p-2 rounded-lg border border-emerald-200 outline-none focus:ring-2 ring-emerald-400 bg-white"
+                                        >
+                                            <option value="RV">Renta Variable</option>
+                                            <option value="Monetario">F. Monetario</option>
+                                            <option value="Deposito">Depósito</option>
+                                        </select>
+                                    </div>
 
-                            {inv.maturityDate && (
-                                <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center text-xs">
-                                    <span className="flex items-center gap-1 text-slate-500">
-                                        <Clock size={12} />
-                                        Vence: {new Date(inv.maturityDate).toLocaleDateString()}
-                                    </span>
-                                    {inv.apy && (
-                                        <span className="font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                                            {inv.apy}% TAE
-                                        </span>
+                                    {(editInvCategory === "Deposito") && (
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="number" placeholder="TAE"
+                                                value={editInvApy} onChange={e => setEditInvApy(e.target.value)}
+                                                className="w-1/3 text-sm p-2 rounded-lg border border-emerald-200 outline-none"
+                                            />
+                                            <input
+                                                type="date"
+                                                value={editInvMaturity} onChange={e => setEditInvMaturity(e.target.value)}
+                                                className="w-2/3 text-sm p-2 rounded-lg border border-emerald-200 outline-none"
+                                            />
+                                        </div>
                                     )}
+
+                                    <div className="flex gap-2 pt-1">
+                                        <button
+                                            onClick={() => setEditingInvId(null)}
+                                            className="flex-1 py-1.5 text-xs font-medium text-slate-500 bg-slate-100 rounded-lg"
+                                        >Cancelar</button>
+                                        <button
+                                            onClick={handleUpdateInvestment}
+                                            disabled={isUpdatingInv}
+                                            className="flex-1 py-1.5 text-xs font-bold text-white bg-emerald-600 rounded-lg"
+                                        >
+                                            {isUpdatingInv ? "..." : "Guardar"}
+                                        </button>
+                                    </div>
                                 </div>
+                            ) : (
+                                <>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div>
+                                            <h4 className="font-medium text-slate-800 flex items-center gap-2">
+                                                {inv.name}
+                                                {inv.category === "RV" && <ArrowUpRight size={14} className="text-accent" />}
+                                            </h4>
+                                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">{inv.category}</p>
+                                        </div>
+                                        <p className="font-semibold text-slate-800">{inv.amount.toLocaleString('es-ES')} €</p>
+                                    </div>
+
+                                    {inv.maturityDate && (
+                                        <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center text-xs">
+                                            <span className="flex items-center gap-1 text-slate-500">
+                                                <Clock size={12} />
+                                                Vence: {new Date(inv.maturityDate).toLocaleDateString()}
+                                            </span>
+                                            {inv.apy && (
+                                                <span className="font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                                                    {inv.apy}% TAE
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    <div className="mt-3 flex gap-2 justify-end">
+                                        <button
+                                            onClick={() => startEditing(inv)}
+                                            className="p-1 px-2 text-[10px] font-bold text-slate-400 hover:text-slate-600 border border-slate-100 rounded flex items-center gap-1"
+                                        >
+                                            <Edit2 size={10} /> Editar
+                                        </button>
+                                        <button
+                                            disabled={isDeletingInv === inv.id}
+                                            onClick={() => handleDeleteInvestment(inv.id)}
+                                            className="p-1 px-2 text-[10px] font-bold text-slate-400 hover:text-red-500 border border-slate-100 rounded flex items-center gap-1"
+                                        >
+                                            <Trash2 size={10} /> {isDeletingInv === inv.id ? "..." : "Borrar"}
+                                        </button>
+                                    </div>
+                                </>
                             )}
                         </Card>
                     ))}

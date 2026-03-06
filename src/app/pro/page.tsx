@@ -4,16 +4,14 @@ import { useStore } from "@/store/useStore";
 import { Card } from "@/components/ui/Card";
 import { useState } from "react";
 import { Target, BellRing, Repeat, Percent, Info, Plus, ArrowRight, Trash2 } from "lucide-react";
+import { createClient } from "@/lib/supabase";
 
 export default function ProFeaturesPage() {
-    const { users, currentUser, subscriptions, goals, transactions, addGoal, updateGoalProgress, deleteGoal, addSubscription, deleteSubscription } = useStore();
-
-    const user = users[currentUser];
-    const partnerId = currentUser === "A" ? "B" : "A";
-    const partnerName = users[partnerId].name;
+    const { user, household, members, wealth, investments, subscriptions, goals, transactions, addGoal, updateGoalProgress, deleteGoal, addSubscription, deleteSubscription } = useStore();
+    const supabase = createClient();
 
     // Cálculos para Tasa de Ahorro Mensual (simplificado)
-    const personalTxs = transactions.filter(t => t.type === "personal" && t.paidBy === currentUser);
+    const personalTxs = transactions.filter(t => t.type === "personal" && t.paidBy === user?.id);
     const personalExpenses = personalTxs.reduce((acc, curr) => acc + curr.amount, 0);
 
     const sharedTxs = transactions.filter(t => t.type === "shared");
@@ -23,24 +21,26 @@ export default function ProFeaturesPage() {
         if (t.splitType === "50-50") {
             sharedContribution += t.amount / 2;
         } else if (t.splitType === "custom") {
-            sharedContribution += (currentUser === "A" ? (t.splitAmountA || 0) : (t.splitAmountB || 0));
+            // Simplified sum
+            sharedContribution += t.amount / 2;
         }
     });
 
     const totalMonthlySpend = personalExpenses + sharedContribution;
-    const savingsAmount = user.salary - totalMonthlySpend;
-    const savingsRate = Math.max(0, Math.round((savingsAmount / user.salary) * 100));
+    const salary = wealth?.salary || 0;
+    const savingsAmount = salary - totalMonthlySpend;
+    const savingsRate = salary > 0 ? Math.max(0, Math.round((savingsAmount / salary) * 100)) : 0;
 
-    // Alertas de vencimiento de inversiones (Mock)
-    const investmentsExpiringSoon = user.investments.filter(i => {
+    // Alertas de vencimiento de inversiones
+    const investmentsExpiringSoon = investments.filter(i => {
         if (!i.maturityDate) return false;
         const daysUntilExpiry = (new Date(i.maturityDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24);
         return daysUntilExpiry > 0 && daysUntilExpiry <= 30;
     });
 
-    const totalSubsA = subscriptions.filter(s => s.paidBy === 'A').reduce((acc, s) => acc + (s.period === 'anual' ? s.cost / 12 : s.cost), 0);
-    const totalSubsB = subscriptions.filter(s => s.paidBy === 'B').reduce((acc, s) => acc + (s.period === 'anual' ? s.cost / 12 : s.cost), 0);
-    const myTotalSubs = subscriptions.filter(s => s.paidBy === currentUser).reduce((acc, s) => acc + (s.period === 'anual' ? s.cost / 12 : s.cost), 0);
+    const totalSubs = subscriptions.reduce((acc, s) => acc + (s.period === 'anual' ? s.cost / 12 : s.cost), 0);
+    const myTotalSubs = subscriptions.filter(s => s.paidBy === user?.id).reduce((acc, s) => acc + (s.period === 'anual' ? s.cost / 12 : s.cost), 0);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // UI States
     const [isAddingGoal, setIsAddingGoal] = useState(false);
@@ -54,7 +54,7 @@ export default function ProFeaturesPage() {
     const [subName, setSubName] = useState("");
     const [subCost, setSubCost] = useState("");
     const [subPeriod, setSubPeriod] = useState<"mensual" | "anual">("mensual");
-    const [subPayer, setSubPayer] = useState<"A" | "B">(currentUser);
+    const [subPayer, setSubPayer] = useState<string>(user?.id || "");
 
     return (
         <div className="p-6 space-y-6">
@@ -97,14 +97,24 @@ export default function ProFeaturesPage() {
                                     className="flex-1 py-2 text-sm font-medium text-slate-500 bg-slate-100 rounded-lg"
                                 >Cancelar</button>
                                 <button
-                                    onClick={() => {
-                                        if (!goalName || !goalTarget) return;
-                                        addGoal({ name: goalName, targetAmount: Number(goalTarget) });
-                                        setIsAddingGoal(false);
-                                        setGoalName(""); setGoalTarget("");
+                                    disabled={isSubmitting || !goalName || !goalTarget}
+                                    onClick={async () => {
+                                        if (!goalName || !goalTarget || !household) return;
+                                        setIsSubmitting(true);
+                                        const { data, error } = await supabase
+                                            .from("goals")
+                                            .insert({ household_id: household.id, name: goalName, target_amount: Number(goalTarget), current_amount: 0 })
+                                            .select()
+                                            .single();
+                                        setIsSubmitting(false);
+                                        if (!error && data) {
+                                            addGoal({ id: data.id, name: data.name, targetAmount: Number(data.target_amount), currentAmount: 0 });
+                                            setIsAddingGoal(false);
+                                            setGoalName(""); setGoalTarget("");
+                                        }
                                     }}
-                                    className="flex-1 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
-                                >Crear</button>
+                                    className="flex-1 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                                >{isSubmitting ? "..." : "Crear"}</button>
                             </div>
                         </div>
                     </Card>
@@ -119,7 +129,13 @@ export default function ProFeaturesPage() {
                                     <h3 className="font-medium text-slate-800">{goal.name}</h3>
                                     <div className="flex items-center gap-2">
                                         <span className="text-sm font-semibold text-primary">{progress}%</span>
-                                        <button onClick={() => deleteGoal(goal.id)} className="text-slate-300 hover:text-red-500 transition-colors">
+                                        <button
+                                            onClick={async () => {
+                                                await supabase.from("goals").delete().eq("id", goal.id);
+                                                deleteGoal(goal.id);
+                                            }}
+                                            className="text-slate-300 hover:text-red-500 transition-colors"
+                                        >
                                             <Trash2 size={14} />
                                         </button>
                                     </div>
@@ -144,8 +160,11 @@ export default function ProFeaturesPage() {
                                             autoFocus
                                         />
                                         <button
-                                            onClick={() => {
-                                                if (goalAddAmount) updateGoalProgress(goal.id, Number(goalAddAmount));
+                                            onClick={async () => {
+                                                if (!goalAddAmount) return;
+                                                const newAmt = Math.min(goal.targetAmount, goal.currentAmount + Number(goalAddAmount));
+                                                await supabase.from("goals").update({ current_amount: newAmt }).eq("id", goal.id);
+                                                updateGoalProgress(goal.id, Number(goalAddAmount));
                                                 setEditingGoalId(null);
                                                 setGoalAddAmount("");
                                             }}
@@ -231,13 +250,13 @@ export default function ProFeaturesPage() {
                             <div className="flex items-center gap-2">
                                 <span className="text-xs text-slate-500">Paga:</span>
                                 <div className="flex gap-2">
-                                    {(["A", "B"] as const).map(uid => (
+                                    {members.map(m => (
                                         <button
-                                            key={uid}
-                                            onClick={() => setSubPayer(uid)}
-                                            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${subPayer === uid ? "bg-indigo-600 text-white" : "bg-white text-slate-600 border border-slate-200"}`}
+                                            key={m.id}
+                                            onClick={() => setSubPayer(m.id)}
+                                            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${subPayer === m.id ? "bg-indigo-600 text-white" : "bg-white text-slate-600 border border-slate-200"}`}
                                         >
-                                            {users[uid].name}
+                                            {m.display_name?.split(" ")[0]}
                                         </button>
                                     ))}
                                 </div>
@@ -248,14 +267,24 @@ export default function ProFeaturesPage() {
                                     className="flex-1 py-2 text-sm font-medium text-slate-500 bg-slate-100 rounded-lg"
                                 >Cancelar</button>
                                 <button
-                                    onClick={() => {
-                                        if (!subName || !subCost) return;
-                                        addSubscription({ name: subName, cost: Number(subCost), period: subPeriod, paidBy: subPayer });
-                                        setIsAddingSub(false);
-                                        setSubName(""); setSubCost("");
+                                    disabled={isSubmitting || !subName || !subCost}
+                                    onClick={async () => {
+                                        if (!subName || !subCost || !household) return;
+                                        setIsSubmitting(true);
+                                        const { data, error } = await supabase
+                                            .from("subscriptions")
+                                            .insert({ household_id: household.id, name: subName, cost: Number(subCost), period: subPeriod, paid_by: subPayer })
+                                            .select()
+                                            .single();
+                                        setIsSubmitting(false);
+                                        if (!error && data) {
+                                            addSubscription({ id: data.id, name: data.name, cost: Number(data.cost), period: data.period, paidBy: data.paid_by });
+                                            setIsAddingSub(false);
+                                            setSubName(""); setSubCost("");
+                                        }
                                     }}
-                                    className="flex-1 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
-                                >Guardar</button>
+                                    className="flex-1 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                                >{isSubmitting ? "..." : "Guardar"}</button>
                             </div>
                         </div>
                     </Card>
@@ -265,7 +294,7 @@ export default function ProFeaturesPage() {
                     <div className="flex justify-between items-center mb-4 pb-4 border-b border-border">
                         <div>
                             <p className="text-sm text-slate-500">Gasto mensual conjunto</p>
-                            <p className="text-xl font-bold text-slate-800">{(totalSubsA + totalSubsB).toFixed(2)} €</p>
+                            <p className="text-xl font-bold text-slate-800">{totalSubs.toFixed(2)} €</p>
                         </div>
                         <div className="text-right">
                             <p className="text-sm text-slate-500">Pagas tú</p>
@@ -276,8 +305,8 @@ export default function ProFeaturesPage() {
                         {subscriptions.map(sub => (
                             <div key={sub.id} className="flex justify-between items-center">
                                 <div className="flex items-center gap-2">
-                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${sub.paidBy === currentUser ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-500'}`}>
-                                        {users[sub.paidBy].name.charAt(0)}
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${sub.paidBy === user?.id ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-500'}`}>
+                                        {members.find(m => m.id === sub.paidBy)?.display_name?.charAt(0).toUpperCase() || "U"}
                                     </div>
                                     <span className="text-sm font-medium text-slate-700">{sub.name}</span>
                                 </div>
@@ -285,7 +314,13 @@ export default function ProFeaturesPage() {
                                     <span className="text-sm text-slate-600">
                                         {sub.cost.toFixed(2)} € <span className="text-[10px] text-slate-400">/{sub.period === 'mensual' ? 'mes' : 'año'}</span>
                                     </span>
-                                    <button onClick={() => deleteSubscription(sub.id)} className="text-slate-300 hover:text-red-500 transition-colors">
+                                    <button
+                                        onClick={async () => {
+                                            await supabase.from("subscriptions").delete().eq("id", sub.id);
+                                            deleteSubscription(sub.id);
+                                        }}
+                                        className="text-slate-300 hover:text-red-500 transition-colors"
+                                    >
                                         <Trash2 size={14} />
                                     </button>
                                 </div>
