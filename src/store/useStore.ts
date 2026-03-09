@@ -48,6 +48,8 @@ export interface BankAccount {
     balance: number;
     is_primary?: boolean;
     payroll?: number;
+    is_shared?: boolean;
+    household_id?: string;
 }
 
 export interface WealthSnapshot {
@@ -60,7 +62,6 @@ export interface WealthSnapshot {
 
 export interface UserState {
     id: string; // Real auth.uid
-    salary: number;
     liquidity: number;
     investments: Investment[];
 }
@@ -92,7 +93,6 @@ export interface AppState {
 
     // Personal Financial Data
     wealth: {
-        salary: number;
         liquidity: number;
     };
     investments: Investment[];
@@ -112,7 +112,6 @@ export interface AppState {
 
     // Wealth Management
     updateLiquidity: (amount: number) => void;
-    updateSalary: (amount: number) => void;
     addInvestment: (investment: Investment) => void;
     deleteInvestment: (id: string) => void;
     updateInvestment: (id: string, updates: Partial<Investment>) => void; // Modified signature
@@ -139,7 +138,7 @@ export interface AppState {
     setUser: (user: any | null) => void; // Uses Supabase Auth User type
     setHousehold: (household: Household | null) => void;
     setMembers: (members: AppUser[]) => void;
-    setWealth: (w: { salary: number, liquidity: number }) => void; // Modified parameter name
+    setWealth: (w: { liquidity: number }) => void; // Modified parameter name
     setInvestments: (i: Investment[]) => void; // Modified parameter name
     setTransactions: (t: Transaction[]) => void; // Modified parameter name
     setSubscriptions: (s: Subscription[]) => void; // Modified parameter name
@@ -160,7 +159,6 @@ export const useStore = create<AppState>()(
             members: [],
 
             wealth: {
-                salary: 0,
                 liquidity: 0,
             },
             investments: [],
@@ -211,9 +209,6 @@ export const useStore = create<AppState>()(
 
             updateLiquidity: (amount) => set((state) => ({
                 wealth: { ...state.wealth, liquidity: amount }
-            })),
-            updateSalary: (amount) => set((state) => ({
-                wealth: { ...state.wealth, salary: amount }
             })),
 
             addInvestment: (investment) => set((state) => {

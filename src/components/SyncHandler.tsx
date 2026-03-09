@@ -129,17 +129,17 @@ export function SyncHandler() {
             ] = await Promise.all([
                 supabase.from("wealth").select("*").eq("user_id", user.id).single(),
                 supabase.from("investments").select("*").eq("user_id", user.id),
-                supabase.from("accounts").select("*").eq("user_id", user.id),
+                household ? supabase.from("accounts").select("*").or(`user_id.eq.${user.id},and(is_shared.eq.true,household_id.eq.${household.id})`) : supabase.from("accounts").select("*").eq("user_id", user.id),
                 supabase.from("wealth_history").select("*").eq("user_id", user.id).order("recording_date", { ascending: false })
             ]);
 
             if (wealthData) {
-                setWealth({ salary: Number(wealthData.salary), liquidity: Number(wealthData.liquidity) });
+                setWealth({ liquidity: Number(wealthData.liquidity) });
             } else {
                 // Initialize if empty
-                const { data: newWealth } = await supabase.from("wealth").insert({ user_id: user.id, salary: 0, liquidity: 0 }).select().single();
+                const { data: newWealth } = await supabase.from("wealth").insert({ user_id: user.id, liquidity: 0 }).select().single();
                 if (newWealth) {
-                    setWealth({ salary: Number(newWealth.salary), liquidity: Number(newWealth.liquidity) });
+                    setWealth({ liquidity: Number(newWealth.liquidity) });
                 }
             }
 
@@ -160,7 +160,9 @@ export function SyncHandler() {
                     name: a.name,
                     balance: Number(a.balance),
                     is_primary: a.is_primary,
-                    payroll: Number(a.payroll || 0)
+                    payroll: Number(a.payroll || 0),
+                    is_shared: a.is_shared,
+                    household_id: a.household_id
                 })));
             }
 

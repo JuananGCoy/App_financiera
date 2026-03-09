@@ -7,7 +7,7 @@ import { Target, BellRing, Repeat, Percent, Info, Plus, ArrowRight, Trash2 } fro
 import { createClient } from "@/lib/supabase";
 
 export default function ProFeaturesPage() {
-    const { user, household, members, wealth, investments, subscriptions, goals, transactions, addGoal, updateGoalProgress, deleteGoal, addSubscription, deleteSubscription } = useStore();
+    const { user, household, members, wealth, investments, subscriptions, accounts, goals, transactions, addGoal, updateGoalProgress, deleteGoal, addSubscription, deleteSubscription } = useStore();
     const supabase = createClient();
 
     // Cálculos para Tasa de Ahorro Mensual (simplificado)
@@ -27,9 +27,9 @@ export default function ProFeaturesPage() {
     });
 
     const totalMonthlySpend = personalExpenses + sharedContribution;
-    const salary = wealth?.salary || 0;
-    const savingsAmount = salary - totalMonthlySpend;
-    const savingsRate = salary > 0 ? Math.max(0, Math.round((savingsAmount / salary) * 100)) : 0;
+    const payroll = accounts.reduce((sum, acc) => acc.is_primary ? sum + (acc.payroll || 0) : sum, 0);
+    const savingsAmount = payroll - totalMonthlySpend;
+    const savingsRate = payroll > 0 ? Math.max(0, Math.round((savingsAmount / payroll) * 100)) : 0;
 
     // Alertas de vencimiento de inversiones
     const investmentsExpiringSoon = investments.filter(i => {
