@@ -60,6 +60,32 @@ export interface WealthSnapshot {
     savingsVsPrevious: number;
 }
 
+export interface ShoppingItem {
+    id: string;
+    household_id: string;
+    name: string;
+    is_checked: boolean;
+}
+
+export interface HouseholdTask {
+    id: string;
+    household_id: string;
+    title: string;
+    assigned_to: string | null;
+    is_completed: boolean;
+}
+
+export type MealType = "Comida" | "Cena";
+export type DayOfWeek = "Lunes" | "Martes" | "Miércoles" | "Jueves" | "Viernes" | "Sábado" | "Domingo";
+
+export interface WeeklyMeal {
+    id: string;
+    household_id: string;
+    day_of_week: DayOfWeek;
+    meal_type: MealType;
+    recipe_name: string | null;
+}
+
 export interface UserState {
     id: string; // Real auth.uid
     liquidity: number;
@@ -105,6 +131,11 @@ export interface AppState {
     subscriptions: Subscription[];
     goals: Goal[];
 
+    // Home Hub Data
+    shoppingItems: ShoppingItem[];
+    tasks: HouseholdTask[];
+    meals: WeeklyMeal[];
+
     // UI State
     isAddTxModalOpen: boolean;
     openAddTxModal: () => void;
@@ -145,6 +176,12 @@ export interface AppState {
     setGoals: (g: Goal[]) => void; // Modified parameter name
     setAccounts: (a: BankAccount[]) => void; // New
     setHistory: (h: WealthSnapshot[]) => void; // New
+
+    // Home Hub Actions
+    setShoppingItems: (items: ShoppingItem[]) => void;
+    setTasks: (tasks: HouseholdTask[]) => void;
+    setMeals: (meals: WeeklyMeal[]) => void;
+
     signOut: () => Promise<void>;
 }
 
@@ -167,6 +204,9 @@ export const useStore = create<AppState>()(
             goals: [],
             accounts: [], // New
             history: [], // New
+            shoppingItems: [],
+            tasks: [],
+            meals: [],
             netWorthHistory: [],
             isAddTxModalOpen: false,
 

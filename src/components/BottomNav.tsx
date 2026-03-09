@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Receipt, TrendingUp, Sparkles } from "lucide-react";
+import { Receipt, Home, User, PieChart } from "lucide-react";
 
 export function BottomNav() {
     const pathname = usePathname();
 
     const links = [
-        { href: "/", label: "Resumen", icon: Home },
+        { href: "/", label: "Resumen", icon: PieChart },
         { href: "/expenses", label: "Gastos", icon: Receipt },
-        { href: "/wealth", label: "Patrimonio", icon: TrendingUp },
-        { href: "/pro", label: "Pro", icon: Sparkles },
+        { href: "/home", label: "Hogar", icon: Home },
+        { href: "/wealth", label: "Perfil", icon: User },
     ];
 
     return (
