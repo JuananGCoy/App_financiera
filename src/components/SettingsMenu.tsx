@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Settings, User, Lock, LogOut, X, Loader2 } from "lucide-react";
+import { Settings, User, Lock, LogOut, X, Loader2, Users, Copy, Check } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useStore } from "@/store/useStore";
 
 export function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
-    const { user, setUser } = useStore();
+    const { user, setUser, household } = useStore();
     const [isOpen, setIsOpen] = useState(false);
 
     // Modals state
@@ -19,6 +19,7 @@ export function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    const [isCopied, setIsCopied] = useState(false);
 
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -138,6 +139,29 @@ export function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
                         <Lock size={16} className="text-slate-400" />
                         <span>Cambiar Contraseña</span>
                     </button>
+
+                    <div className="h-px bg-slate-100 my-1"></div>
+
+                    {household?.invite_code && (
+                        <div className="px-4 py-2">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Código del Grupo</p>
+                            <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg border border-slate-100 group">
+                                <span className="text-sm font-mono font-bold text-primary flex-1">{household.invite_code}</span>
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(household.invite_code);
+                                        setIsCopied(true);
+                                        setTimeout(() => setIsCopied(false), 2000);
+                                    }}
+                                    className="p-1.5 rounded-md hover:bg-white hover:shadow-sm transition-all text-slate-400 hover:text-primary"
+                                    title="Copiar código"
+                                >
+                                    {isCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-1">Comparte este código para unir a tu pareja.</p>
+                        </div>
+                    )}
 
                     <div className="h-px bg-slate-100 my-1"></div>
 
